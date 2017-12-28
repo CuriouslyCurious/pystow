@@ -24,7 +24,7 @@ import textwrap
 from sys import exit
 
 # Globals
-ignore = [".git"]
+IGNORE = [".git"]
 
 parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -41,7 +41,7 @@ confirm = parser.add_mutually_exclusive_group()
 confirm.add_argument("-s", "--skip", dest="skip", action="store_true", default=False,
                      help="skip any conflicts")
 confirm.add_argument("-N", "--NO", dest="no", action="store_true", default=False,
-                     help="don't perform any actions, just print the results.")
+                     help="don't do anything")
 confirm.add_argument("-Y", "--YES", dest="yes", action="store_true", default=False,
                      help="say yes to all prompts")
 
@@ -118,7 +118,7 @@ def traverse_subdirs(origin):
     global ignore
     for subdir, dirs, files in os.walk(origin, topdown=True):
         # https://stackoverflow.com/questions/19859840/excluding-directories-in-os-walk
-        [dirs.remove(d) for d in list(dirs) if d in ignore]
+        [dirs.remove(d) for d in list(dirs) if d in IGNORE]
         subdir = pathlib.Path(subdir)
         target = target_path(subdir)
 
@@ -222,7 +222,7 @@ if __name__ == "__main__":
              % str(dotfiles_dir) + colour.RESET)
 
     for path in dotfiles_dir.iterdir():
-        if path.is_dir() and path.stem not in ignore:
+        if path.is_dir():
             try:
                 traverse_subdirs(path)
             except PermissionError:
