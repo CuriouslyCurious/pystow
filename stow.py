@@ -8,6 +8,9 @@ This program assumes that the dotfiles folder is located at
 $HOME/dotfiles.
 
 It will by default create symlinked folders instead of symlinking just files.
+
+TODO:
+* Add option if target is newer than origin and is not a symlink to replace origin
 """
 
 __author__ = "curious"
@@ -15,13 +18,14 @@ __author__ = "curious"
 import argparse
 import os
 import pathlib
+import re
 import shutil
+import sys
 import textwrap
-
-from sys import exit
 
 # Globals
 IGNORE = [".git"]
+PATTERN = re.compile(r"\\{1,2}x1b.*?m")
 
 parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -46,22 +50,62 @@ modes = parser.add_mutually_exclusive_group()
 modes.add_argument("-r", "--remove", dest="remove", action="store_true", default=False,
                    help="remove all existing files (you will be prompted)")
 modes.add_argument("-R", "--replace", dest="replace", action="store_true", default=False,
-                   help="replace all existing files (no prompts)")
+                   help="replace all existing files (you will be prompted)")
 args = parser.parse_args()
 
 
 class Colour:
-    RED = "\033[1;31m"
-    GREEN = "\033[0;32m"
-    YELLOW = "\033[0;33m"
-    BLUE = "\033[1;34m"
-    CYAN = "\033[1;36m"
-    RESET = "\033[0;0m"
-    BOLD = "\033[;1m"
-    REVERSE = "\033[;7m"
+    def __init__(self):
+        if supports_color():
+            self.RED = "\033[1;31m"
+            self.GREEN = "\033[0;32m"
+            self.YELLOW = "\033[0;33m"
+            self.BLUE = "\033[1;34m"
+            self.CYAN = "\033[1;36m"
+            self.RESET = "\033[0;0m"
+            self.BOLD = "\033[;1m"
+            self.REVERSE = "\033[;7m"
+        else:
+            self.RED = ""
+            self.GREEN = ""
+            self.YELLOW = ""
+            self.BLUE = ""
+            self.CYAN = ""
+            self.RESET = ""
+            self.BOLD = ""
+            self.REVERSE = ""
+
+    def colours(self):
+        return list(self.__dict__.values())
+
+
+# https://github.com/django/django/blob/master/django/core/management/color.py
+def supports_color():
+    """
+    Return True if the running system's terminal supports color,
+    and False otherwise.
+    """
+    plat = sys.platform
+    supported_platform = plat != 'Pocket PC' and \
+        (plat != 'win32' or 'ANSICON' in os.environ)
+
+    is_a_tty = hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+    if not supported_platform or not is_a_tty:
+        return False
+    return True
 
 
 def symlink(origin, target):
+    try:
+        _symlink(origin, target)
+    except PermissionError as e:
+        print(error_colour("ERROR: Permission denied when attempting to access " +
+                           "'%s'" % highlight_colour(str(origin)) +
+                           error_colour(" and ") +
+                           "'%s'" % highlight_colour(str(target))))
+
+
+def _symlink(origin, target):
     if args.no:
         return
 
@@ -87,10 +131,10 @@ def symlink(origin, target):
                 print("'%s' already exists. Skipping..." % str(target))
                 return
 
-            if args.replace or args.yes or prompt(origin, target, "replace"):
+            if args.yes or prompt(origin, target, "replace"):
                 if pathlib.Path.home() != pathlib.Path(*target.parts[:3]):
-                    print(warning_colour("'%s' is outside of home folder. Skipping..." %
-                                         str(target)))
+                    print(highlight_colour("'%s'") % str(target) +
+                          warning_colour(" is outside of home folder. Skipping..."))
                     return
 
                 if target.is_file() or target.is_symlink():
@@ -173,7 +217,7 @@ def prompt(origin, target, action="symlink"):
             args.yes = True
             return True
         elif inp.startswith("N"):
-            exit("Exiting.")
+            sys.exit("Exiting.")
             args.no = True
             return False
 
@@ -189,19 +233,36 @@ def print_ln(origin, target):
         print("ln -s %s %s" % (str(origin), str(target)))
 
 
+def remove_colour_chars(s):
+    global PATTERN
+    return bytes(re.sub(PATTERN, r"", repr(s))[1:-1], "utf-8").decode("unicode_escape")
+
+
+def get_colour(s):
+    global PATTERN
+    colour = Colour()
+    res = re.findall(PATTERN, repr(s))
+    if res:
+        return bytes(res[0], "utf-8").decode("unicode_escape")
+    return bytes(colour.RESET.strip("'\""), "utf-8").decode("unicode_escape")
+
+
 def warning_colour(s):
     colour = Colour()
-    return colour.YELLOW + s + colour.RESET
+    prev = get_colour(s)
+    return colour.YELLOW + remove_colour_chars(s) + prev
 
 
 def error_colour(s):
     colour = Colour()
-    return colour.RED + s + colour.RESET
+    prev = get_colour(s)
+    return colour.RED + remove_colour_chars(s) + prev
 
 
 def highlight_colour(s):
     colour = Colour()
-    return colour.CYAN + s + colour.RESET
+    prev = get_colour(s)
+    return colour.CYAN + remove_colour_chars(s) + prev
 
 
 if __name__ == "__main__":
@@ -209,14 +270,10 @@ if __name__ == "__main__":
     dotfiles_dir = pathlib.Path(pathlib.Path.home() / "dotfiles")
 
     if not dotfiles_dir.is_dir():
-        exit(colour.RED + "ERROR: '%s' is not a directory."
-             % str(dotfiles_dir) + colour.RESET)
+        sys.exit(error_colour("ERROR: ") + highlight_colour("'%s'" % str(dotfiles_dir)) +
+                 error_colour(" is not a directory."))
 
     for path in dotfiles_dir.iterdir():
-        if path.is_dir() and not path.stem in IGNORE:
-            try:
-                traverse_subdirs(path)
-            except PermissionError:
-                exit(error_colour("ERROR: Permission denied. \
-Please run the script as root if you want to symlink outside of home folder"))
+        if path.is_dir() and path.stem not in IGNORE:
+            traverse_subdirs(path)
 
