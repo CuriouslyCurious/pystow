@@ -213,7 +213,6 @@ def highlight_colour(s):
     return colour.CYAN + s + colour.RESET
 
 
-
 if __name__ == "__main__":
     colour = Colour()
     dotfiles_dir = pathlib.Path(pathlib.Path.home() / "dotfiles")
@@ -227,6 +226,6 @@ if __name__ == "__main__":
             try:
                 traverse_subdirs(path)
             except PermissionError:
-                exit(error_colour("ERROR: Permission denied. Please run the script as root if you want to symlink outside of home folder"))
-
+                exit(error_colour("ERROR: Permission denied. \
+Please run the script as root if you want to symlink outside of home folder"))
 
