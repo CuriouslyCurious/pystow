@@ -1,0 +1,1 @@
+/home/curious/dotfiles/scripts/scripts/stow.py
