@@ -8,9 +8,6 @@ This program assumes that the dotfiles folder is located at
 $HOME/dotfiles.
 
 It will by default create symlinked folders instead of symlinking just files.
-
-TODO:
-* Make an option to disable symlinked folder creation
 """
 
 __author__ = "curious"
@@ -34,14 +31,14 @@ parser = argparse.ArgumentParser(
                 WARNING: This script may crush your dreams (and files) if you are
                 not careful. Read the prompts carefully."""))
 
-# parser.add_argument("-v", "--verbose", dest="verbose", action="store_true", default=False,
-#                     help="verbose mode")
+parser.add_argument("-f", "--files", dest="files", action="store_true",
+                          default=False, help="only symlink to files")
 
 confirm = parser.add_mutually_exclusive_group()
 confirm.add_argument("-s", "--skip", dest="skip", action="store_true", default=False,
                      help="skip any conflicts")
 confirm.add_argument("-N", "--NO", dest="no", action="store_true", default=False,
-                     help="don't do anything")
+                     help="do nothing")
 confirm.add_argument("-Y", "--YES", dest="yes", action="store_true", default=False,
                      help="say yes to all prompts")
 
@@ -49,11 +46,8 @@ modes = parser.add_mutually_exclusive_group()
 modes.add_argument("-r", "--remove", dest="remove", action="store_true", default=False,
                    help="remove all existing files (you will be prompted)")
 modes.add_argument("-R", "--replace", dest="replace", action="store_true", default=False,
-                   help="replace all existing files (you will be prompted)")
+                   help="replace all existing files (no prompts)")
 args = parser.parse_args()
-
-if args.yes or args.no:
-    args.verbose = True
 
 
 class Colour:
@@ -71,33 +65,31 @@ def symlink(origin, target):
     if args.no:
         return
 
-    if args.yes:  # or args.verbose:
+    if args.yes:
         print_ln(origin, target)
 
     if args.remove:
         if pathlib.Path.home() != pathlib.Path(*target.parts[:3]):
-            print(warning_colour("Skipping '%s'. It is outside of home folder." %
+            print(warning_colour("'%s' is outside of home folder. Skipping..." %
                                  str(target)))
             return
 
         if target.is_file() or target.is_symlink():
             if args.yes or prompt(origin, target, "remove"):
                 target.unlink()
-                return
 
         elif target.is_dir():
             shutil.rmtree(str(target))  # very scary
-            return
 
     else:
         if target.exists():
-            if args.skip:
-                print("Skipping '%s', already exists..." % str(target))
+            if args.skip or not args.replace:
+                print("'%s' already exists. Skipping..." % str(target))
                 return
 
             if args.replace or args.yes or prompt(origin, target, "replace"):
                 if pathlib.Path.home() != pathlib.Path(*target.parts[:3]):
-                    print(warning_colour("Skipping '%s'. It is outside of home folder." %
+                    print(warning_colour("'%s' is outside of home folder. Skipping..." %
                                          str(target)))
                     return
 
@@ -108,28 +100,28 @@ def symlink(origin, target):
                     shutil.rmtree(str(target))  # very scary
 
                 target.symlink_to(origin, origin.is_dir())
-                return
+
         else:
             if args.yes or prompt(origin, target):
                 target.symlink_to(origin, origin.is_dir())
 
 
 def traverse_subdirs(origin):
-    global ignore
+    global IGNORE
     for subdir, dirs, files in os.walk(origin, topdown=True):
         # https://stackoverflow.com/questions/19859840/excluding-directories-in-os-walk
         [dirs.remove(d) for d in list(dirs) if d in IGNORE]
         subdir = pathlib.Path(subdir)
         target = target_path(subdir)
 
-        # Symlink folders if target is empty or already a symlink
-        if not target.exists():
-            symlink(subdir, target)
-            continue
+        if not args.files:
+            if not target.exists():
+                symlink(subdir, target)
+                continue
 
-        if target.is_symlink():
-            symlink(subdir, target)
-            continue
+            if target.is_symlink():
+                symlink(subdir, target)
+                continue
 
         # if sum([1 for d in subdir.iterdir()]) == 0:  # if directory is empty
         #    symlink(subdir, target)
@@ -139,7 +131,6 @@ def traverse_subdirs(origin):
             f = pathlib.Path(str(subdir) + "/" + f)
             target = target_path(f)
             symlink(f, target)
-            # if [f.stem == x.stem for x in (origin.glob("*.*"))]:  # if file exists
 
 
 def target_path(origin):
@@ -222,7 +213,7 @@ if __name__ == "__main__":
              % str(dotfiles_dir) + colour.RESET)
 
     for path in dotfiles_dir.iterdir():
-        if path.is_dir():
+        if path.is_dir() and not path.stem in IGNORE:
             try:
                 traverse_subdirs(path)
             except PermissionError:
