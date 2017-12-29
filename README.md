@@ -1,10 +1,11 @@
 # pystow
-[![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/badges/shields.svg)]() [![license](https://img.shields.io/github/license/mashape/apistatus.svg)]()
+[![Github file size](https://img.shields.io/github/size/webcaetano/craft/build/phaser-craft.min.js.svg)]() [![license](https://img.shields.io/github/license/mashape/apistatus.svg)]()
+
 A replacement for `stow` written in python 3.
 
-It was made out of my own frustrations with how clunky and un-moving the original `stow` was. It is very tedious to have to stow each individual folder to get all the config files up and running. Also, ghving to install an extra program, when you don't always have root access is a pain. 
+It was made out of my own frustrations with how clunky and un-moving the original `stow` was. It was very tedious to have to stow each individual folder to get all the config files up and running. And, you couldn't stow if there was any kind of conflict or if it was outside of your home folder. Then there was the problem of having to install an extra program when you don't always have root access just to manage your dotfiles.
 
-I also tried `stowsh` which was good for portability, but it's implementation left something to be desired. 
+I also tried `stowsh` which was good for portability as it is written in `bash`, but it's implementation left something to be desired. 
 
 So, I made my own *fancier* version. ;)
 
