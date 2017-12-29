@@ -1,4 +1,5 @@
 # pystow
+[![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/badges/shields.svg)]() [![license](https://img.shields.io/github/license/mashape/apistatus.svg)]()
 A replacement for `stow` written in python 3.
 
 It was made out of my own frustrations with how clunky and un-moving the original `stow` was. It is very tedious to have to stow each individual folder to get all the config files up and running. Also, ghving to install an extra program, when you don't always have root access is a pain. 
