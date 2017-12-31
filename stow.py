@@ -14,8 +14,6 @@ TODO:
 * Make it possible to symlink stuff outside of home directory (sudo?)
 """
 
-__author__ = "curious"
-
 import argparse
 import os
 import pathlib
@@ -115,8 +113,8 @@ def _symlink(origin, target):
 
     if args.remove:
         if pathlib.Path.home() != pathlib.Path(*target.parts[:3]):
-            print(warning_colour("'%s' is outside of home folder. Skipping..." %
-                                 str(target)))
+            print(highlight_colour("'%s'") % str(target) +
+                  warning_colour(" is outside of home folder. Skipping..."))
             return
 
         if target.is_file() or target.is_symlink():
@@ -202,6 +200,7 @@ def target_path(origin):
 def prompt(origin, target, action="symlink"):
     colour = Colour()
     text = colour.BOLD + action.capitalize() + colour.RESET
+
     if action == "remove":
         text += " '%s'?" % highlight_colour(str(target))
     elif action == "replace":
@@ -245,7 +244,6 @@ def print_ln(origin, target):
     elif args.replace:
         print("unlink %s" % str(target))
         print("ln -s %s %s" % (str(origin), str(target)))
-
     else:
         print("ln -s %s %s" % (str(origin), str(target)))
 
@@ -266,20 +264,20 @@ def get_colour(s):
 
 def warning_colour(s):
     colour = Colour()
-    prev = get_colour(s)
-    return colour.YELLOW + remove_colour_chars(s) + prev
+    prev_colour = get_colour(s)
+    return colour.YELLOW + remove_colour_chars(s) + prev_colour
 
 
 def error_colour(s):
     colour = Colour()
-    prev = get_colour(s)
-    return colour.RED + remove_colour_chars(s) + prev
+    prev_colour = get_colour(s)
+    return colour.RED + remove_colour_chars(s) + prev_colour
 
 
 def highlight_colour(s):
     colour = Colour()
-    prev = get_colour(s)
-    return colour.CYAN + remove_colour_chars(s) + prev
+    prev_colour = get_colour(s)
+    return colour.CYAN + remove_colour_chars(s) + prev_colour
 
 
 if __name__ == "__main__":
