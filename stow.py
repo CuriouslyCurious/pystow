@@ -126,7 +126,16 @@ def _symlink(origin, target):
             shutil.rmtree(str(target))  # very scary
 
     else:
-        if target.exists():
+        if target.exists() or target.is_symlink():
+            # Check if the target is a broken symlink
+            try:
+                target.resolve(strict=True)
+            except FileNotFoundError:
+                if args.yes or prompt(origin, target, "replace"):
+                    target.unlink()
+                    target.symlink_to(origin, origin.is_dir())
+                    return
+
             if args.skip or not args.replace:
                 print("'%s' already exists. Skipping..." % str(target))
                 return
