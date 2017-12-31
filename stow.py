@@ -11,6 +11,7 @@ It will by default create symlinked folders instead of symlinking just files.
 
 TODO:
 * Add option if target is newer than origin and is not a symlink to replace origin
+* Make it possible to symlink stuff outside of home directory (sudo?)
 """
 
 __author__ = "curious"
@@ -127,10 +128,9 @@ def _symlink(origin, target):
 
     else:
         if target.exists() or target.is_symlink():
-            # Check if the target is a broken symlink
-            try:
-                target.resolve(strict=True)
-            except FileNotFoundError:
+            # Check for a broken symlink, if true: prompt for replacement.
+            # This is done to avoid having any broken symlinks lingering.
+            if is_broken_symlink(target):
                 if args.yes or prompt(origin, target, "replace"):
                     target.unlink()
                     target.symlink_to(origin, origin.is_dir())
@@ -159,6 +159,15 @@ def _symlink(origin, target):
                 target.symlink_to(origin, origin.is_dir())
 
 
+def is_broken_symlink(path):
+    # Check if the target is a broken symlink by resolving its path
+    try:
+        path.resolve(strict=True)
+        return False
+    except FileNotFoundError:
+        return True
+
+
 def traverse_subdirs(origin):
     global IGNORE
     for subdir, dirs, files in os.walk(origin, topdown=True):
@@ -175,10 +184,6 @@ def traverse_subdirs(origin):
             if target.is_symlink():
                 symlink(subdir, target)
                 continue
-
-        # if sum([1 for d in subdir.iterdir()]) == 0:  # if directory is empty
-        #    symlink(subdir, target)
-        #    continue
 
         for f in files:
             f = pathlib.Path(str(subdir) + "/" + f)
@@ -213,6 +218,9 @@ def prompt(origin, target, action="symlink"):
     elif target.is_file() and (action == "replace" or action == "remove"):
         text = text.replace(": ", "") + \
                 error_colour("\nWARNING: This will delete the target file: ")
+    elif is_broken_symlink(target) and (action == "replace"):
+        text = text.replace(": ", "") + \
+                error_colour("\nWARNING: This symlink is broken (replace recommended): ")
 
     while True:
         inp = input(text)
