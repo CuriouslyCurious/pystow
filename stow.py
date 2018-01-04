@@ -10,7 +10,8 @@ $HOME/dotfiles.
 It will by default create symlinked folders instead of symlinking just files.
 
 TODO:
-* Make it possible to symlink stuff outside of home directory (sudo?)
+* Make copy-ing work.
+* Warn users about symlinking stuff outside of home.
 """
 
 import argparse
@@ -33,8 +34,15 @@ parser = argparse.ArgumentParser(
                 WARNING: This script may crush your dreams (and files) if you are
                 not careful. Read the prompts carefully."""))
 
-parser.add_argument("-f", "--files", dest="files", action="store_true",
-                          default=False, help="only symlink to files")
+
+parser.add_argument("--root", dest="root", action="store_true", default=False,
+                    help="skip everything inside of your home directory")
+
+file_actions = parser.add_mutually_exclusive_group()
+file_actions.add_argument("-f", "--files", dest="files", action="store_true", default=False,
+                          help="only symlink to files")
+file_actions.add_argument("-c", "--copy", dest="copy", action="store_true", default=False,
+                          help="copy instead of symlink")
 
 confirm = parser.add_mutually_exclusive_group()
 confirm.add_argument("-s", "--skip", dest="skip", action="store_true", default=False,
@@ -49,7 +57,12 @@ modes.add_argument("-r", "--remove", dest="remove", action="store_true", default
                    help="remove all existing files (you will be prompted)")
 modes.add_argument("-R", "--replace", dest="replace", action="store_true", default=False,
                    help="replace all existing files (you will be prompted)")
+
 args = parser.parse_args()
+
+# Ensure that only files are symlinked when in root
+if args.root:
+    args.files = True
 
 
 class Colour:
@@ -110,8 +123,14 @@ def _symlink(origin, target):
     if args.yes:
         print_ln(origin, target)
 
+    home = get_home()
+    if args.root and home == pathlib.Path(*target.parts[:3]):
+        print(highlight_colour("'%s'") % str(target) +
+              warning_colour(" is inside of home folder. Skipping..."))
+        return
+
     if args.remove:
-        if pathlib.Path.home() != pathlib.Path(*target.parts[:3]):
+        if not args.root and home != pathlib.Path(*target.parts[:3]):
             print(highlight_colour("'%s'") % str(target) +
                   warning_colour(" is outside of home folder. Skipping..."))
             return
@@ -140,11 +159,16 @@ def _symlink(origin, target):
                     return
 
             if args.skip or not args.replace:
-                print("'%s' already exists. Skipping..." % str(target))
+                if home != pathlib.Path(*target.parts[:3]):
+                    print(reverse_highlight("'%s'") % str(target) +
+                          warning_colour(" already exists. Skipping..."))
+                else:
+                    print(highlight_colour("'%s'") % str(target) +
+                          warning_colour(" already exists. Skipping..."))
                 return
 
             if args.yes or prompt(origin, target, "replace"):
-                if pathlib.Path.home() != pathlib.Path(*target.parts[:3]):
+                if not args.root and home != pathlib.Path(*target.parts[:3]):
                     print(highlight_colour("'%s'") % str(target) +
                           warning_colour(" is outside of home folder. Skipping..."))
                     return
@@ -185,7 +209,7 @@ def traverse_subdirs(origin):
         subdir = pathlib.Path(subdir)
         target = target_path(subdir)
 
-        if not args.files:
+        if not args.files or not args.copy:
             if not target.exists():
                 symlink(subdir, target)
                 continue
@@ -204,7 +228,7 @@ def target_path(origin):
     if "etc" in origin.parts:
         target = "/" / pathlib.Path(*origin.parts[4:])
     else:
-        target = pathlib.Path.home() / pathlib.Path(*origin.parts[5:])
+        target = get_home() / pathlib.Path(*origin.parts[5:])
     return target
 
 
@@ -216,7 +240,7 @@ def prompt(origin, target, action="symlink"):
         text += " '%s'?" % highlight_colour(str(target))
     elif action == "replace":
         text += " '%s' with '%s'?" % \
-                (highlight_colour(str(origin)), highlight_colour(str(target)))
+                (highlight_colour(str(target)), highlight_colour(str(origin)))
     else:
         text += " '%s' to '%s'?" % \
                 (highlight_colour(str(origin)), highlight_colour(str(target)))
@@ -235,7 +259,6 @@ trying to symlink. Would you like the replace the older file with the newer and 
     elif is_broken_symlink(target) and (action == "replace"):
         text = text.replace(": ", "") + \
                 error_colour("\nWARNING: Target symlink is broken (replace recommended): ")
-
 
     while True:
         inp = input(text)
@@ -296,9 +319,55 @@ def highlight_colour(s):
     return colour.CYAN + remove_colour_chars(s) + prev_colour
 
 
+def reverse_highlight(s):
+    colour = Colour()
+    prev_colour = get_colour(s)
+    return colour.REVERSE + colour.CYAN + remove_colour_chars(s) + prev_colour
+
+
+def user_is_admin():
+    # Windows
+    if os.name == "nt":
+        import ctypes
+        try:
+            return ctypes.windll.shell32.IsUserAnAdmin()
+        except:
+            print(warning_colour("ERROR: Admin check failed, assuming non-admin user."))
+            return False
+
+    # unix
+    elif os.name == "posix":
+        return os.getuid() == 0
+
+
+def get_home():
+    # Assumes if the user is running the script as admin,
+    # that the script is located in the user's home folder
+    if user_is_admin():
+        return pathlib.Path(*pathlib.Path(os.path.abspath(sys.argv[0])).parts[0:3])
+    else:
+        return pathlib.Path.home()
+
+
 if __name__ == "__main__":
     colour = Colour()
-    dotfiles_dir = pathlib.Path(pathlib.Path.home() / "dotfiles")
+    if user_is_admin():
+        print(warning_colour("WARNING: You are running this program as root. Be careful."))
+        home = get_home()
+        while True:
+            text = "Is '%s' your home directory? (y/n): " % highlight_colour(str(home))
+            inp = input(text)
+            if inp == "" or inp == "y":
+                break
+            elif inp == "n":
+                while True:
+                    home = input("Please specify your home directory: ")
+                    home = pathlib.Path(home)
+                    break
+    else:
+        home = get_home()
+
+    dotfiles_dir = home / "dotfiles"
 
     if not dotfiles_dir.is_dir():
         sys.exit(error_colour("ERROR: ") + highlight_colour("'%s'" % str(dotfiles_dir)) +
