@@ -10,7 +10,6 @@ $HOME/dotfiles.
 It will by default create symlinked folders instead of symlinking just files.
 
 TODO:
-* Add option if target is newer than origin and is not a symlink to replace origin
 * Make it possible to symlink stuff outside of home directory (sudo?)
 """
 
@@ -134,6 +133,12 @@ def _symlink(origin, target):
                     target.symlink_to(origin, origin.is_dir())
                     return
 
+            if target is more_recent(origin, target):
+                if args.yes or prompt(origin, target, "replace"):
+                    target.replace(origin)
+                    target.symlink_to(origin, origin.is_dir())
+                    return
+
             if args.skip or not args.replace:
                 print("'%s' already exists. Skipping..." % str(target))
                 return
@@ -164,6 +169,12 @@ def is_broken_symlink(path):
         return False
     except FileNotFoundError:
         return True
+
+
+def more_recent(origin, target):
+    if target.stat().st_mtime > origin.stat().st_mtime:
+        return target
+    return origin
 
 
 def traverse_subdirs(origin):
@@ -213,13 +224,18 @@ def prompt(origin, target, action="symlink"):
 
     if target.is_dir() and (action == "replace" or action == "remove"):
         text = text.replace(": ", "") + \
-                error_colour("\nWARNING: This will delete all contents in the directory: ")
+                error_colour("\nWARNING: This will delete all contents in the target directory: ")
+    elif target is more_recent(origin, target) and action == "replace":
+        text = text.replace(": ", "") + \
+                error_colour("\nWARNING: Target file is newer than the one you are \
+trying to symlink. Would you like the replace the older file with the newer and symlink?: ")
     elif target.is_file() and (action == "replace" or action == "remove"):
         text = text.replace(": ", "") + \
-                error_colour("\nWARNING: This will delete the target file: ")
+                error_colour("\nWARNING: This will delete the existing target file: ")
     elif is_broken_symlink(target) and (action == "replace"):
         text = text.replace(": ", "") + \
-                error_colour("\nWARNING: This symlink is broken (replace recommended): ")
+                error_colour("\nWARNING: Target symlink is broken (replace recommended): ")
+
 
     while True:
         inp = input(text)
