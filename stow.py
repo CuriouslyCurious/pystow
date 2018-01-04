@@ -352,7 +352,9 @@ def get_home():
 if __name__ == "__main__":
     colour = Colour()
     if user_is_admin():
-        print(warning_colour("WARNING: You are running this program as root. Be careful."))
+        print(warning_colour("WARNING: You are running this program as root. \
+Any symlinks created outside of your home directory may pose a security risk to \
+your system, proceed with great caution."))
         home = get_home()
         while True:
             text = "Is '%s' your home directory? (y/n): " % highlight_colour(str(home))
