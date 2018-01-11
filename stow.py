@@ -90,6 +90,11 @@ class Colour:
         return list(self.__dict__.values())
 
 
+class StopTraversing(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+
+
 # https://github.com/django/django/blob/master/django/core/management/color.py
 def supports_color():
     """
@@ -105,6 +110,7 @@ def supports_color():
         return False
     return True
 
+
 def symlink(origin, target):
     """
     Control function that takes the correct action depending on arguments
@@ -113,7 +119,7 @@ def symlink(origin, target):
     if user_is_admin() and home == pathlib.Path(*target.parts[:3]):
         print(highlight_colour("'%s'") % str(target) +
               warning_colour(" is inside of home folder. Skipping..."))
-        return
+        raise StopTraversing("Skipping.")
 
     if args.replace:
         replace_symlink(origin, target)
@@ -133,6 +139,7 @@ def create_symlink(origin, target):
             else:
                 print(highlight_colour("'%s'") % str(target) +
                       warning_colour(" already exists. Skipping..."))
+                raise StopTraversing("Skipping.")
 
         elif args.yes or prompt(origin, target):
             target.symlink_to(origin, origin.is_dir())
@@ -158,10 +165,11 @@ def replace_symlink(origin, target):
             if home != pathlib.Path(*target.parts[:3]):
                 print(reverse_highlight("'%s'") % str(target) +
                       warning_colour(" already exists. Skipping..."))
+                raise StopTraversing("Skipping.")
             else:
                 print(highlight_colour("'%s'") % str(target) +
                       warning_colour(" already exists. Skipping..."))
-            return
+                raise StopTraversing("Skipping.")
 
         if target is more_recent(origin, target):
             if args.yes or prompt(origin, target, "replace"):
@@ -177,7 +185,8 @@ def replace_symlink(origin, target):
             if not args.root and home != pathlib.Path(*target.parts[:3]):
                 print(highlight_colour("'%s'") % str(target) +
                       warning_colour(" is outside of home folder. Skipping..."))
-                return
+
+                raise StopTraversing("Skipping.")
 
             if target.is_file() or target.is_symlink():
                 target.unlink()
@@ -209,9 +218,11 @@ def is_broken_symlink(path):
 
 
 def more_recent(origin, target):
-    if target.stat().st_mtime > origin.stat().st_mtime:
-        return target
-    return origin
+    if origin.exists() and target.exists():
+        if target.stat().st_mtime > origin.stat().st_mtime:
+            return target
+        return origin
+    return None
 
 
 def prompt(origin, target, action="symlink"):
@@ -321,27 +332,29 @@ def traverse_subdirs(origin):
         target = target_path(subdir)
 
         if not args.files or not args.copy:
-            if not target.exists():
-                # TODO: Replace with new function create_symlink()
-                symlink(subdir, target)
-                continue
-
-            if target.is_symlink():
-                # TODO: Replace with new function replace_symlink()
-                symlink(subdir, target)
+            if target.is_symlink() or not target.exists():
+                try:
+                    symlink(subdir, target)
+                except StopTraversing:
+                    return
                 continue
 
         for f in files:
             f = pathlib.Path(str(subdir) + "/" + f)
             target = target_path(f)
-            symlink(f, target)
+            try:
+                symlink(f, target)
+            except StopTraversing:
+                continue
 
 
 def target_path(origin):
-    # Remove home path / dotfiles
-    target = pathlib.Path(str(origin).replace(str(get_home() / "dotfiles"), ""))
-    if target.parts[1] == "etc":
-        return target
+    # Remove home path / dotfiles / <this dir> /
+    pattern = re.compile(str(get_home() / "dotfiles") + "/[^/]*")
+    target = pathlib.Path(re.sub(pattern, "", str(origin)))
+    # target = pathlib.Path(str(origin).replace(str(get_home() / "dotfiles"), ""))
+    if "etc" in origin.parts:
+        return pathlib.Path("/etc" + str(target))
     else:
         return pathlib.Path(str(get_home()) + str(target))
 
@@ -399,5 +412,6 @@ your system, proceed with great caution."))
     for path in dotfiles_dir.iterdir():
         print(path)
         if path.is_dir() and path.stem not in IGNORE:
-            traverse_subdirs(path)
+            for sub_path in path.iterdir():
+                traverse_subdirs(sub_path)
 
