@@ -152,12 +152,6 @@ def _symlink(origin, target):
                     target.symlink_to(origin, origin.is_dir())
                     return
 
-            if target is more_recent(origin, target):
-                if args.yes or prompt(origin, target, "replace"):
-                    target.replace(origin)
-                    target.symlink_to(origin, origin.is_dir())
-                    return
-
             if args.skip or not args.replace:
                 if home != pathlib.Path(*target.parts[:3]):
                     print(reverse_highlight("'%s'") % str(target) +
@@ -166,6 +160,16 @@ def _symlink(origin, target):
                     print(highlight_colour("'%s'") % str(target) +
                           warning_colour(" already exists. Skipping..."))
                 return
+
+            if target is more_recent(origin, target):
+                if args.yes or prompt(origin, target, "replace"):
+                    # TODO: replacing doesn't work for directories
+                    if target.is_dir():
+                        shutil.rmtree(str(target))
+                    else:
+                        target.replace(origin)
+                    target.symlink_to(origin, origin.is_dir())
+                    return
 
             if args.yes or prompt(origin, target, "replace"):
                 if not args.root and home != pathlib.Path(*target.parts[:3]):
@@ -187,12 +191,8 @@ def _symlink(origin, target):
 
 
 def is_broken_symlink(path):
-    # Check if the target is a broken symlink by resolving its path
-    try:
-        path.resolve(strict=True)
-        return False
-    except FileNotFoundError:
-        return True
+    # https://stackoverflow.com/questions/20794/find-broken-symlinks-with-python
+    return os.path.islink(str(path)) and not os.path.exists(str(path))
 
 
 def more_recent(origin, target):
@@ -211,10 +211,12 @@ def traverse_subdirs(origin):
 
         if not args.files or not args.copy:
             if not target.exists():
+                # TODO: Replace with new function create_symlink()
                 symlink(subdir, target)
                 continue
 
             if target.is_symlink():
+                # TODO: Replace with new function replace_symlink()
                 symlink(subdir, target)
                 continue
 
@@ -225,11 +227,12 @@ def traverse_subdirs(origin):
 
 
 def target_path(origin):
-    if "etc" in origin.parts:
-        target = "/" / pathlib.Path(*origin.parts[4:])
+    # Remove home path / dotfiles
+    target = pathlib.Path(str(origin).replace(str(get_home() / "dotfiles"), ""))
+    if target.parts[1] == "etc":
+        return target
     else:
-        target = get_home() / pathlib.Path(*origin.parts[5:])
-    return target
+        return pathlib.Path(str(get_home()) + str(target))
 
 
 def prompt(origin, target, action="symlink"):
@@ -376,6 +379,7 @@ your system, proceed with great caution."))
                  error_colour(" is not a directory."))
 
     for path in dotfiles_dir.iterdir():
+        print(path)
         if path.is_dir() and path.stem not in IGNORE:
             traverse_subdirs(path)
 
