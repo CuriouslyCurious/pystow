@@ -105,10 +105,38 @@ def supports_color():
         return False
     return True
 
-
 def symlink(origin, target):
+    """
+    Control function that takes the correct action depending on arguments
+    """
+    # Skip anything in the home directory if the user is admin
+    if user_is_admin() and home == pathlib.Path(*target.parts[:3]):
+        print(highlight_colour("'%s'") % str(target) +
+              warning_colour(" is inside of home folder. Skipping..."))
+        return
+
+    if args.replace:
+        replace_symlink(origin, target)
+
+    elif args.remove:
+        remove_symlink(origin, target)
+
+    else:
+        create_symlink(origin, target)
+
+
+def create_symlink(origin, target):
     try:
-        _symlink(origin, target)
+        if target.exists():
+            if args.replace:
+                replace_symlink(origin, target)
+            else:
+                print(highlight_colour("'%s'") % str(target) +
+                      warning_colour(" already exists. Skipping..."))
+
+        elif args.yes or prompt(origin, target):
+            target.symlink_to(origin, origin.is_dir())
+
     except PermissionError as e:
         print(error_colour("ERROR: Permission denied when attempting to access " +
                            "'%s'" % highlight_colour(str(origin)) +
@@ -116,19 +144,51 @@ def symlink(origin, target):
                            "'%s'" % highlight_colour(str(target))))
 
 
-def _symlink(origin, target):
-    if args.no:
-        return
+def replace_symlink(origin, target):
+    if target.exists() or target.is_symlink():
+        # Check for a broken symlink, if true: prompt for replacement.
+        # This is done to avoid having any broken symlinks lingering.
+        if is_broken_symlink(target):
+            if args.yes or prompt(origin, target, "replace"):
+                target.unlink()
+                target.symlink_to(origin, origin.is_dir())
+                return
 
-    if args.yes:
-        print_ln(origin, target)
+        if args.skip or not args.replace:
+            if home != pathlib.Path(*target.parts[:3]):
+                print(reverse_highlight("'%s'") % str(target) +
+                      warning_colour(" already exists. Skipping..."))
+            else:
+                print(highlight_colour("'%s'") % str(target) +
+                      warning_colour(" already exists. Skipping..."))
+            return
 
-    home = get_home()
-    if args.root and home == pathlib.Path(*target.parts[:3]):
-        print(highlight_colour("'%s'") % str(target) +
-              warning_colour(" is inside of home folder. Skipping..."))
-        return
+        if target is more_recent(origin, target):
+            if args.yes or prompt(origin, target, "replace"):
+                # TODO: replacing doesn't work for directories
+                if target.is_dir():
+                    shutil.rmtree(str(target))
+                else:
+                    target.replace(origin)
+                target.symlink_to(origin, origin.is_dir())
+                return
 
+        if args.yes or prompt(origin, target, "replace"):
+            if not args.root and home != pathlib.Path(*target.parts[:3]):
+                print(highlight_colour("'%s'") % str(target) +
+                      warning_colour(" is outside of home folder. Skipping..."))
+                return
+
+            if target.is_file() or target.is_symlink():
+                target.unlink()
+
+            elif target.is_dir():
+                shutil.rmtree(str(target))  # very scary
+
+            target.symlink_to(origin, origin.is_dir())
+
+
+def remove_symlink(origin, target):
     if args.remove:
         if not args.root and home != pathlib.Path(*target.parts[:3]):
             print(highlight_colour("'%s'") % str(target) +
@@ -142,53 +202,6 @@ def _symlink(origin, target):
         elif target.is_dir():
             shutil.rmtree(str(target))  # very scary
 
-    else:
-        if target.exists() or target.is_symlink():
-            # Check for a broken symlink, if true: prompt for replacement.
-            # This is done to avoid having any broken symlinks lingering.
-            if is_broken_symlink(target):
-                if args.yes or prompt(origin, target, "replace"):
-                    target.unlink()
-                    target.symlink_to(origin, origin.is_dir())
-                    return
-
-            if args.skip or not args.replace:
-                if home != pathlib.Path(*target.parts[:3]):
-                    print(reverse_highlight("'%s'") % str(target) +
-                          warning_colour(" already exists. Skipping..."))
-                else:
-                    print(highlight_colour("'%s'") % str(target) +
-                          warning_colour(" already exists. Skipping..."))
-                return
-
-            if target is more_recent(origin, target):
-                if args.yes or prompt(origin, target, "replace"):
-                    # TODO: replacing doesn't work for directories
-                    if target.is_dir():
-                        shutil.rmtree(str(target))
-                    else:
-                        target.replace(origin)
-                    target.symlink_to(origin, origin.is_dir())
-                    return
-
-            if args.yes or prompt(origin, target, "replace"):
-                if not args.root and home != pathlib.Path(*target.parts[:3]):
-                    print(highlight_colour("'%s'") % str(target) +
-                          warning_colour(" is outside of home folder. Skipping..."))
-                    return
-
-                if target.is_file() or target.is_symlink():
-                    target.unlink()
-
-                elif target.is_dir():
-                    shutil.rmtree(str(target))  # very scary
-
-                target.symlink_to(origin, origin.is_dir())
-
-        else:
-            if args.yes or prompt(origin, target):
-                target.symlink_to(origin, origin.is_dir())
-
 
 def is_broken_symlink(path):
     # https://stackoverflow.com/questions/20794/find-broken-symlinks-with-python
@@ -199,40 +212,6 @@ def more_recent(origin, target):
     if target.stat().st_mtime > origin.stat().st_mtime:
         return target
     return origin
-
-
-def traverse_subdirs(origin):
-    global IGNORE
-    for subdir, dirs, files in os.walk(str(origin), topdown=True):
-        # https://stackoverflow.com/questions/19859840/excluding-directories-in-os-walk
-        [dirs.remove(d) for d in list(dirs) if d in IGNORE]
-        subdir = pathlib.Path(subdir)
-        target = target_path(subdir)
-
-        if not args.files or not args.copy:
-            if not target.exists():
-                # TODO: Replace with new function create_symlink()
-                symlink(subdir, target)
-                continue
-
-            if target.is_symlink():
-                # TODO: Replace with new function replace_symlink()
-                symlink(subdir, target)
-                continue
-
-        for f in files:
-            f = pathlib.Path(str(subdir) + "/" + f)
-            target = target_path(f)
-            symlink(f, target)
-
-
-def target_path(origin):
-    # Remove home path / dotfiles
-    target = pathlib.Path(str(origin).replace(str(get_home() / "dotfiles"), ""))
-    if target.parts[1] == "etc":
-        return target
-    else:
-        return pathlib.Path(str(get_home()) + str(target))
 
 
 def prompt(origin, target, action="symlink"):
@@ -247,21 +226,26 @@ def prompt(origin, target, action="symlink"):
     else:
         text += " '%s' to '%s'?" % \
                 (highlight_colour(str(origin)), highlight_colour(str(target)))
-    text += "\n[y(es) / n(o); Y(ES) (to all) / N(O) (to all)]: "
+    if not args.no or not args.yes:
+        text += "\n[y(es) / n(o); Y(ES) (to all) / N(O) (to all)]: "
 
-    if target.is_dir() and (action == "replace" or action == "remove"):
-        text = text.replace(": ", "") + \
-                error_colour("\nWARNING: This will delete all contents in the target directory: ")
-    elif target is more_recent(origin, target) and action == "replace":
-        text = text.replace(": ", "") + \
-                error_colour("\nWARNING: Target file is newer than the one you are \
-trying to symlink. Would you like the replace the older file with the newer and symlink?: ")
-    elif target.is_file() and (action == "replace" or action == "remove"):
-        text = text.replace(": ", "") + \
-                error_colour("\nWARNING: This will delete the existing target file: ")
-    elif is_broken_symlink(target) and (action == "replace"):
-        text = text.replace(": ", "") + \
-                error_colour("\nWARNING: Target symlink is broken (replace recommended): ")
+        if target.is_dir() and (action == "replace" or action == "remove"):
+            text = text.replace(": ", "") + error_colour(
+                    "\nWARNING: This will delete all contents in the target directory: ")
+        elif target is more_recent(origin, target) and action == "replace":
+            text = text.replace(": ", "") + error_colour(
+                    "\nWARNING: Target file is newer than the one you are \
+    trying to symlink. Would you like the replace the older file with the newer and symlink?: ")
+        elif target.is_file() and (action == "replace" or action == "remove"):
+            text = text.replace(": ", "") + \
+                    error_colour("\nWARNING: This will delete the existing target file: ")
+        elif is_broken_symlink(target) and (action == "replace"):
+            text = text.replace(": ", "") + \
+                    error_colour("\nWARNING: Target symlink is broken (replace recommended): ")
+
+    if args.no or args.yes:
+        print(text)
+        return args.yes
 
     while True:
         inp = input(text)
@@ -326,6 +310,40 @@ def reverse_highlight(s):
     colour = Colour()
     prev_colour = get_colour(s)
     return colour.REVERSE + colour.CYAN + remove_colour_chars(s) + prev_colour
+
+
+def traverse_subdirs(origin):
+    global IGNORE
+    for subdir, dirs, files in os.walk(str(origin), topdown=True):
+        # https://stackoverflow.com/questions/19859840/excluding-directories-in-os-walk
+        [dirs.remove(d) for d in list(dirs) if d in IGNORE]
+        subdir = pathlib.Path(subdir)
+        target = target_path(subdir)
+
+        if not args.files or not args.copy:
+            if not target.exists():
+                # TODO: Replace with new function create_symlink()
+                symlink(subdir, target)
+                continue
+
+            if target.is_symlink():
+                # TODO: Replace with new function replace_symlink()
+                symlink(subdir, target)
+                continue
+
+        for f in files:
+            f = pathlib.Path(str(subdir) + "/" + f)
+            target = target_path(f)
+            symlink(f, target)
+
+
+def target_path(origin):
+    # Remove home path / dotfiles
+    target = pathlib.Path(str(origin).replace(str(get_home() / "dotfiles"), ""))
+    if target.parts[1] == "etc":
+        return target
+    else:
+        return pathlib.Path(str(get_home()) + str(target))
 
 
 def user_is_admin():
