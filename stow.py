@@ -203,7 +203,7 @@ def more_recent(origin, target):
 
 def traverse_subdirs(origin):
     global IGNORE
-    for subdir, dirs, files in os.walk(origin, topdown=True):
+    for subdir, dirs, files in os.walk(str(origin), topdown=True):
         # https://stackoverflow.com/questions/19859840/excluding-directories-in-os-walk
         [dirs.remove(d) for d in list(dirs) if d in IGNORE]
         subdir = pathlib.Path(subdir)
