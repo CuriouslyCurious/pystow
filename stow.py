@@ -36,7 +36,7 @@ parser = argparse.ArgumentParser(
 
 
 parser.add_argument("--root", dest="root", action="store_true", default=False,
-                    help="skip everything inside of your home directory")
+                    help="when running as root, symlink to your home directory as well")
 
 file_actions = parser.add_mutually_exclusive_group()
 file_actions.add_argument("-f", "--files", dest="files", action="store_true", default=False,
@@ -116,17 +116,15 @@ def symlink(origin, target):
     Control function that takes the correct action depending on arguments
     """
     # Skip anything in the home directory if the user is admin
-    if user_is_admin() and home == pathlib.Path(*target.parts[:3]):
+    if user_is_admin() and not args.root and check_contain_home_dir(target):
         print(highlight_colour("'%s'") % str(target) +
               warning_colour(" is inside of home folder. Skipping..."))
         raise StopTraversing("Skipping.")
 
     if args.replace:
         replace_symlink(origin, target)
-
     elif args.remove:
         remove_symlink(origin, target)
-
     else:
         create_symlink(origin, target)
 
@@ -225,6 +223,10 @@ def more_recent(origin, target):
     return None
 
 
+def check_contain_home_dir(path):
+    return str(get_home()) in str(path)
+
+
 def prompt(origin, target, action="symlink"):
     colour = Colour()
     text = colour.BOLD + action.capitalize() + colour.RESET
@@ -270,9 +272,7 @@ def prompt(origin, target, action="symlink"):
             args.yes = True
             return True
         elif inp.startswith("N"):
-            sys.exit("Exiting.")
-            args.no = True
-            return False
+            sys.exit("Exiting...")
 
 
 def print_ln(origin, target):
@@ -352,7 +352,6 @@ def target_path(origin):
     # Remove home path / dotfiles / <this dir> /
     pattern = re.compile(str(get_home() / "dotfiles") + "/[^/]*")
     target = pathlib.Path(re.sub(pattern, "", str(origin)))
-    # target = pathlib.Path(str(origin).replace(str(get_home() / "dotfiles"), ""))
     if "etc" in origin.parts:
         return pathlib.Path("/etc" + str(target))
     else:
@@ -410,7 +409,6 @@ your system, proceed with great caution."))
                  error_colour(" is not a directory."))
 
     for path in dotfiles_dir.iterdir():
-        print(path)
         if path.is_dir() and path.stem not in IGNORE:
             for sub_path in path.iterdir():
                 traverse_subdirs(sub_path)
