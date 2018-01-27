@@ -12,6 +12,7 @@ It will by default create symlinked folders instead of symlinking just files.
 TODO:
 * Make copy-ing work.
 * Warn users about symlinking stuff outside of home.
+* Make it possible to pass a directory as an argument
 """
 
 import argparse
@@ -379,7 +380,7 @@ def get_home():
     if user_is_admin():
         return pathlib.Path(*pathlib.Path(os.path.abspath(sys.argv[0])).parts[0:3])
     else:
-        return pathlib.Path.home()
+        return pathlib.Path(os.path.expanduser('~'))  # pathlib.Path.Home() only works in 3.5 onwards
 
 
 if __name__ == "__main__":
