@@ -13,6 +13,7 @@ TODO:
 * Make copy-ing work.
 * Warn users about symlinking stuff outside of home.
 * Make it possible to pass a directory as an argument
+* Replacing doesn't work for directories
 """
 
 import argparse
@@ -203,12 +204,12 @@ def remove_symlink(origin, target):
                   warning_colour(" is outside of home folder. Skipping..."))
             return
 
-        if target.is_file() or target.is_symlink():
-            if args.yes or prompt(origin, target, "remove"):
+        if args.yes or prompt(origin, target, "remove"):
+            if target.is_file() or target.is_symlink():
                 target.unlink()
 
-        elif target.is_dir():
-            shutil.rmtree(str(target))  # very scary
+            elif target.is_dir():
+                shutil.rmtree(str(target))  # very scary
 
 
 def is_broken_symlink(path):
@@ -337,7 +338,7 @@ def traverse_subdirs(origin):
                 try:
                     symlink(subdir, target)
                 except StopTraversing:
-                    return
+                    pass
                 continue
 
         for f in files:
