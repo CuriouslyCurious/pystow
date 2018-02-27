@@ -11,9 +11,10 @@ It will by default create symlinked folders instead of symlinking just files.
 
 TODO:
 * Make copy-ing work.
-* Warn users about symlinking stuff outside of home.
 * Make it possible to pass a directory as an argument
 * Replacing doesn't work for directories
+* Recode replace_symlink()
+* Fix script creating bad symlinks and removing things it should not.
 """
 
 import argparse
