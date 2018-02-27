@@ -123,6 +123,14 @@ def symlink(origin, target):
               warning_colour(" is inside of home folder. Skipping..."))
         raise StopTraversing("Skipping.")
 
+    # Check for a broken symlink, if true: prompt for replacement.
+    # This is done to avoid having any broken symlinks lingering.
+    if is_broken_symlink(target):
+        if args.yes or prompt(origin, target, "remove"):
+            target.unlink()
+        else:
+            return
+
     if args.replace:
         replace_symlink(origin, target)
     elif args.remove:
@@ -133,13 +141,10 @@ def symlink(origin, target):
 
 def create_symlink(origin, target):
     try:
-        if target.exists():
-            if args.replace:
-                replace_symlink(origin, target)
-            else:
-                print(highlight_colour("'%s'") % str(target) +
-                      warning_colour(" already exists. Skipping..."))
-                raise StopTraversing("Skipping.")
+        if target.exists() or target.is_symlink():
+            print(highlight_colour("'%s'") % str(target) +
+                  warning_colour(" already exists. Skipping..."))
+            raise StopTraversing("Skipping.")
 
         elif args.yes or prompt(origin, target):
             target.symlink_to(origin, origin.is_dir())
@@ -153,14 +158,6 @@ def create_symlink(origin, target):
 
 def replace_symlink(origin, target):
     if target.exists() or target.is_symlink():
-        # Check for a broken symlink, if true: prompt for replacement.
-        # This is done to avoid having any broken symlinks lingering.
-        if is_broken_symlink(target):
-            if args.yes or prompt(origin, target, "replace"):
-                target.unlink()
-                target.symlink_to(origin, origin.is_dir())
-                return
-
         if args.skip or not args.replace:
             if home != pathlib.Path(*target.parts[:3]):
                 print(reverse_highlight("'%s'") % str(target) +
@@ -244,7 +241,10 @@ def prompt(origin, target, action="symlink"):
     if not args.no or not args.yes:
         text += "\n[y(es) / n(o); Y(ES) (to all) / N(O) (to all)]: "
 
-        if target.is_dir() and (action == "replace" or action == "remove"):
+        if is_broken_symlink(target) and (action == "remove"):
+            text = text.replace(": ", "") + \
+                    error_colour("\nWARNING: Target symlink is broken (removal recommended): ")
+        elif target.is_dir() and (action == "replace" or action == "remove"):
             text = text.replace(": ", "") + error_colour(
                     "\nWARNING: This will delete all contents in the target directory: ")
         elif target is more_recent(origin, target) and action == "replace":
@@ -254,9 +254,6 @@ def prompt(origin, target, action="symlink"):
         elif target.is_file() and (action == "replace" or action == "remove"):
             text = text.replace(": ", "") + \
                     error_colour("\nWARNING: This will delete the existing target file: ")
-        elif is_broken_symlink(target) and (action == "replace"):
-            text = text.replace(": ", "") + \
-                    error_colour("\nWARNING: Target symlink is broken (replace recommended): ")
 
     if args.no or args.yes:
         print(text)
