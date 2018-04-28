@@ -1,5 +1,7 @@
 # pystow
-[![Github file size](https://img.shields.io/github/size/webcaetano/craft/build/phaser-craft.min.js.svg)]() [![license](https://img.shields.io/github/license/mashape/apistatus.svg)]()
+[![Build Status](https://travis-ci.org/CuriouslyCurious/pystow.svg?branch=travis)](https://travis-ci.org/CuriouslyCurious/pystow)
+[![Github file size](https://img.shields.io/github/size/webcaetano/craft/build/phaser-craft.min.js.svg)]()
+[![license](https://img.shields.io/github/license/mashape/apistatus.svg)]()
 
 A replacement for [`stow`](https://www.gnu.org/software/stow/) written in python 3.
 
